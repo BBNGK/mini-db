@@ -92,6 +92,8 @@ impl DiskManager {
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
     use super::*;
     use std::fs::OpenOptions;
 
@@ -113,7 +115,14 @@ mod tests {
 
     #[test]
     fn test_read_write() -> std::io::Result<()> {
-        let test_file = TmpFile::new("db_test");
+        let test_file_name = format!(
+            "{:?}",
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("test_read_write (src/storage/disk.rs): shouldn't error")
+                .as_secs()
+        );
+        let test_file = TmpFile::new(&test_file_name);
         let file = OpenOptions::new()
             .read(true)
             .write(true)
