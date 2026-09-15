@@ -22,6 +22,7 @@ pub struct BufferManager {
     disk_manager: DiskManager,
     // Holds BUFF_POOL_SIZE pages at a time in cache
     cache: Vec<Frame>,
+    // NOTE(ansh): probably poor cache locality. mark for review later.
     // Hashes page_id --> index in cache vector for faster reads
     page_table: HashMap<u32, usize>,
 }
