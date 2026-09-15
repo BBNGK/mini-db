@@ -1,5 +1,5 @@
-use std::fs::File;
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 
 #[derive(Debug)]
@@ -7,7 +7,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 enum PageType {
     DataPage = 1,
     IndexLeaf = 2,
-    IndexInternal = 3
+    IndexInternal = 3,
 }
 
 // Specifies bytes per page
@@ -17,7 +17,7 @@ pub const PAGE_SIZE: usize = 4096;
 pub const BUFF_POOL_SIZE: usize = 64;
 
 pub struct PageHeader {
-    page_type: PageType
+    page_type: PageType,
 }
 pub struct Page {
     pub id: u32,
@@ -31,7 +31,7 @@ pub struct Frame {
     // Number of active readers / writers
     pub pin_count: u32,
     // Flag for whether data has been modified by access methods since it was selected from disk
-    pub is_dirty: bool
+    pub is_dirty: bool,
 }
 
 pub struct BufferManager {
@@ -45,7 +45,7 @@ pub struct BufferManager {
 
 pub struct DiskManager {
     file: File,
-    num_pages: u32
+    num_pages: u32,
 }
 
 impl DiskManager {
@@ -93,8 +93,8 @@ impl DiskManager {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::OpenOptions;
     use super::*;
+    use std::fs::OpenOptions;
 
     struct TmpFile(std::path::PathBuf);
 
@@ -114,7 +114,14 @@ mod tests {
 
     #[test]
     fn test_read_write() -> std::io::Result<()> {
-        let test_file = TmpFile::new("db_test");
+        let test_file_name = format!(
+            "minidb_{:?}",
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("test_read_write (src/storage/disk.rs): shouldn't error")
+                .as_secs()
+        );
+        let test_file = TmpFile::new(&test_file_name);
         let file = OpenOptions::new()
             .read(true)
             .write(true)
