@@ -13,36 +13,18 @@ enum PageType {
 // Specifies bytes per page
 pub const PAGE_SIZE: usize = 4096;
 
-// Specifies the number of pages that can be in buffer at a time
-pub const BUFF_POOL_SIZE: usize = 64;
-
 pub struct PageHeader {
     page_type: PageType,
 }
+
 pub struct Page {
     pub id: u32,
     pub header: PageHeader,
 }
 
-pub struct Frame {
-    pub page_id: Option<u32>,
-    // Holds the page data being caches
-    pub data: [u8; PAGE_SIZE],
-    // Number of active readers / writers
-    pub pin_count: u32,
-    // Flag for whether data has been modified by access methods since it was selected from disk
-    pub is_dirty: bool,
-}
-
-pub struct BufferManager {
-    // Holds instance of DiskManager
-    disk_manager: DiskManager,
-    // Holds BUFF_POOL_SIZE pages at a time in cache
-    cache: Vec<Frame>,
-    // Hashes page_id --> index in cache vector for faster reads
-    page_table: HashMap<u32, usize>,
-}
-
+//
+// DiskManager handles I/O for the disk, including reading and writing pages
+//
 pub struct DiskManager {
     file: File,
     num_pages: u32,
@@ -95,12 +77,19 @@ impl DiskManager {
 mod tests {
     use super::*;
     use std::fs::OpenOptions;
+    use std::time::SystemTime;
 
     struct TmpFile(std::path::PathBuf);
 
     impl TmpFile {
         fn new(name: &str) -> Self {
-            let path = std::env::temp_dir().join(format!("{name}.db"));
+            let path = std::env::temp_dir().join(format!(
+                "{name}_{}.db",
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("test_read_write (src/storage/disk.rs): shouldn't error")
+                    .as_secs()
+            ));
             Self(path)
         }
     }
@@ -114,14 +103,7 @@ mod tests {
 
     #[test]
     fn test_read_write() -> std::io::Result<()> {
-        let test_file_name = format!(
-            "minidb_{:?}",
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("test_read_write (src/storage/disk.rs): shouldn't error")
-                .as_secs()
-        );
-        let test_file = TmpFile::new(&test_file_name);
+        let test_file = TmpFile::new("minidb_test");
         let file = OpenOptions::new()
             .read(true)
             .write(true)
