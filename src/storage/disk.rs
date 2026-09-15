@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn test_read_write() -> std::io::Result<()> {
         let test_file_name = format!(
-            "{:?}",
+            "minidb_{:?}",
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .expect("test_read_write (src/storage/disk.rs): shouldn't error")
