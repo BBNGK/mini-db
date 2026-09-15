@@ -1,5 +1,5 @@
-use std::fs::File;
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 
 #[derive(Debug)]
@@ -7,7 +7,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 enum PageType {
     DataPage = 1,
     IndexLeaf = 2,
-    IndexInternal = 3
+    IndexInternal = 3,
 }
 
 // Specifies bytes per page
@@ -17,7 +17,7 @@ pub const PAGE_SIZE: usize = 4096;
 pub const BUFF_POOL_SIZE: usize = 64;
 
 pub struct PageHeader {
-    page_type: PageType
+    page_type: PageType,
 }
 pub struct Page {
     pub id: u32,
@@ -31,7 +31,7 @@ pub struct Frame {
     // Number of active readers / writers
     pub pin_count: u32,
     // Flag for whether data has been modified by access methods since it was selected from disk
-    pub is_dirty: bool
+    pub is_dirty: bool,
 }
 
 pub struct BufferManager {
@@ -45,7 +45,7 @@ pub struct BufferManager {
 
 pub struct DiskManager {
     file: File,
-    num_pages: u32
+    num_pages: u32,
 }
 
 impl DiskManager {
@@ -77,9 +77,8 @@ impl DiskManager {
     // Appends [0u8; 4096] to end of file, returning newly allocated page id
     pub fn allocate_page(&mut self) -> std::io::Result<u32> {
         let new_page_id = self.num_pages;
-        let offset = (new_page_id as u64) * (PAGE_SIZE as u64);
 
-        self.file.seek(SeekFrom::Start(offset))?;
+        self.file.seek_relative(PAGE_SIZE as i64)?;
         self.file.write_all(&[0u8; PAGE_SIZE])?;
         self.num_pages += 1;
 
@@ -93,8 +92,8 @@ impl DiskManager {
 
 #[cfg(test)]
 mod tests {
-    use std::fs::OpenOptions;
     use super::*;
+    use std::fs::OpenOptions;
 
     struct TmpFile(std::path::PathBuf);
 
