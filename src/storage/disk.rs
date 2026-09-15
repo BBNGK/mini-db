@@ -77,8 +77,9 @@ impl DiskManager {
     // Appends [0u8; 4096] to end of file, returning newly allocated page id
     pub fn allocate_page(&mut self) -> std::io::Result<u32> {
         let new_page_id = self.num_pages;
+        let offset = (new_page_id as u64) * (PAGE_SIZE as u64);
 
-        self.file.seek_relative(PAGE_SIZE as i64)?;
+        self.file.seek(SeekFrom::Start(offset))?;
         self.file.write_all(&[0u8; PAGE_SIZE])?;
         self.num_pages += 1;
 
@@ -92,8 +93,6 @@ impl DiskManager {
 
 #[cfg(test)]
 mod tests {
-    use std::time::SystemTime;
-
     use super::*;
     use std::fs::OpenOptions;
 
