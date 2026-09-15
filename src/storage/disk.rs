@@ -95,6 +95,7 @@ impl DiskManager {
 mod tests {
     use super::*;
     use std::fs::OpenOptions;
+    use std::time::SystemTime;
 
     struct TmpFile(std::path::PathBuf);
 
