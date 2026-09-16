@@ -88,7 +88,7 @@ impl BufferManager {
             .clone()
             .iter()
             .filter_map(|cl| {
-                if cl.0.pin_count >= 1 {
+                if cl.0.pin_count == 0 {
                     Some(cl.1)
                 } else {
                     None
