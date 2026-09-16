@@ -19,12 +19,12 @@ pub struct Frame {
 
 impl std::default::Default for Frame {
     fn default() -> Self {
-        return Self {
+        Self {
             page_id: None,
             data: [0; PAGE_SIZE],
             pin_count: 0,
             is_dirty: false,
-        };
+        }
     }
 }
 
@@ -83,17 +83,28 @@ impl BufferManager {
     // TODO(ansh): copy list to traverse. currently mutates correct cache.
     // https://www.josehu.com/technical/2020/08/07/cache-eviction-algorithms.html
     pub fn find_replaceable_frame(&mut self) -> usize {
-        let mut reference_bits: Vec<bool> = self.cache.clone().iter().map(|cl| cl.1).collect();
+        let mut reference_bits: Vec<bool> = self
+            .cache
+            .clone()
+            .iter()
+            .filter_map(|cl| {
+                if cl.0.pin_count >= 1 {
+                    Some(cl.1)
+                } else {
+                    None
+                }
+            })
+            .collect();
         let mut current_cursor = self.cache_mra_cursor as usize;
 
-        while reference_bits[current_cursor] != false {
+        while reference_bits[current_cursor] {
             reference_bits[current_cursor] = false;
 
             current_cursor += 1;
             current_cursor %= BUFF_POOL_SIZE;
         }
 
-        return current_cursor as usize;
+        current_cursor
     }
 
     // Handles obtaining page information from cache.
