@@ -79,24 +79,22 @@ impl BufferManager {
     // TODO(ansh): copy list to traverse. currently mutates correct cache.
     // https://www.josehu.com/technical/2020/08/07/cache-eviction-algorithms.html
     pub fn find_replaceable_frame(&mut self) -> usize {
-        let mut reference_bits: Vec<bool> = self
+        // NOTE(ansh): store the original cache idx and the ref bit corresponding to it.
+        let mut reference_bits: Vec<(usize, bool)> = self
             .cache
-            .clone()
             .iter()
-            .filter_map(|cl| {
-                if cl.0.pin_count == 0 {
-                    Some(cl.1)
-                } else {
-                    None
-                }
+            .enumerate()
+            .filter_map(|(idx, cl)| match cl.0.pin_count == 0 {
+                true => Some((idx, cl.1)),
+                false => None,
             })
             .collect();
         let mut current_cursor = self.cache_mra_cursor as usize;
 
-        while reference_bits[current_cursor] {
-            reference_bits[current_cursor] = false;
+        while reference_bits[current_cursor].1 {
+            reference_bits[current_cursor].1 = false;
 
-            current_cursor += 1;
+            current_cursor = reference_bits[current_cursor].0;
             current_cursor %= BUFF_POOL_SIZE;
         }
 
