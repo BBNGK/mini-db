@@ -49,7 +49,6 @@ impl BufferManager {
     pub fn new(disk_manager: DiskManager) -> Self {
         let mut cache: [(Frame, bool); BUFF_POOL_SIZE] =
             core::array::from_fn(|_| (Frame::default(), false));
-        // [(Frame::default(), false); BUFF_POOL_SIZE];
         for idx in 0..BUFF_POOL_SIZE {
             cache[idx] = (
                 Frame {
@@ -107,40 +106,40 @@ impl BufferManager {
     // Frames are replaced when they either have a pin_count of 0 or no page_id assigned, while also
     // making sure to flush dirty data back to disk before replacing.
     //
-    pub fn get_page(&mut self, page_id: u32) -> [u8; PAGE_SIZE] {
+    pub fn get_page(&mut self, page_id: u32) -> &mut [u8; PAGE_SIZE] {
         match self.page_table.get(&page_id) {
             Some(idx) => {
-                let mut frame = self.cache[*idx].clone();
-                frame.0.pin_count += 1;
+                let frame = &mut self.cache[*idx].0;
+                frame.pin_count += 1;
 
-                frame.0.data
+                &mut frame.data
             }
             None => {
                 let idx = self.find_replaceable_frame();
-                let mut frame = self.cache[idx].clone();
+                let frame = &mut self.cache[idx].0;
 
                 // Flushes old page
-                if frame.0.is_dirty {
+                if frame.is_dirty {
                     self.disk_manager
-                        .write_page(frame.0.page_id.unwrap(), &frame.0.data)
+                        .write_page(frame.page_id.unwrap(), &frame.data)
                         .expect("Failed to flush dirty page!");
-                    frame.0.is_dirty = false;
+                    frame.is_dirty = false;
                 }
 
-                if let Some(old_idx) = frame.0.page_id {
+                if let Some(old_idx) = frame.page_id {
                     self.page_table.remove(&old_idx);
                 }
 
                 self.page_table.insert(page_id, idx);
 
-                frame.0.pin_count = 1;
-                frame.0.page_id = Some(page_id);
+                frame.pin_count = 1;
+                frame.page_id = Some(page_id);
 
                 self.disk_manager
-                    .read_page(page_id, &mut frame.0.data)
+                    .read_page(page_id, &mut frame.data)
                     .expect("Failed to read new page to frame!");
 
-                frame.0.data
+                &mut frame.data
             }
         }
     }
@@ -152,16 +151,12 @@ impl BufferManager {
             .get(&page_id)
             .ok_or("Unpinning page that doesn't exist in cache!")?;
 
-        let frame = self
-            .cache
-            .cursor_mut(*frame_idx)
-            .current_mut()
-            .expect("Frame should exist");
+        let frame = &mut self.cache[*frame_idx].0;
 
         if is_dirty {
-            frame.0.is_dirty = true;
+            frame.is_dirty = true;
         }
-        frame.0.pin_count = frame.0.pin_count.saturating_sub(1);
+        frame.pin_count = frame.pin_count.saturating_sub(1);
 
         Ok(())
     }
