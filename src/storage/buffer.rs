@@ -29,14 +29,10 @@ impl std::default::Default for Frame {
 }
 
 pub struct BufferManager {
-    // Holds instance of DiskManager
     disk_manager: DiskManager,
-    // Holds BUFF_POOL_SIZE pages at a time in cache
     cache: [(Frame, bool); BUFF_POOL_SIZE], // (Frame, ReferenceBit)
-    cache_mra_cursor: u16,                  // "most recent access." `None` if cache is empty
-    // NOTE(ansh): probably poor cache locality. mark for review later.
-    // Hashes page_id --> index in cache vector for faster reads
-    page_table: HashMap<u32, usize>,
+    cache_mra_cursor: u16, // most recent access. NOTE(ansh): probably poor cache locality. mark for review later.
+    page_table: HashMap<u32, usize>, // Hashes page_id --> index in cache vector for faster reads
 }
 
 impl Drop for BufferManager {
@@ -187,6 +183,88 @@ impl BufferManager {
         }
 
         self.disk_manager.sync()?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs::OpenOptions, time::SystemTime};
+
+    use super::*;
+
+    struct TmpFile(std::path::PathBuf);
+
+    impl TmpFile {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "{name}_{}.db",
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("test_read_write (src/storage/disk.rs): shouldn't error")
+                    .as_secs()
+            ));
+            Self(path)
+        }
+    }
+
+    // Cleans up file from testing
+    impl Drop for TmpFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    #[test]
+    fn test_cache_eviction() -> std::io::Result<()> {
+        let temp_file = TmpFile::new("cache_eviction");
+        let temp_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&temp_file.0)?;
+        let disk_mgr = DiskManager::new(temp_file, 32);
+        let mut buf_mgr = BufferManager::new(disk_mgr);
+
+        // test: check eviction of first page in default config.
+
+        let replaceable_cache_idx = buf_mgr.find_replaceable_frame();
+        assert_eq!(replaceable_cache_idx, 0);
+
+        // test: replace with set configuration and test for first zero ref bit.
+
+        const TEST_FRAMES_COUNT: usize = 4;
+        for idx in 0..TEST_FRAMES_COUNT {
+            // [
+            //  (Frame, 1),
+            //  (Frame, 1),
+            //  (Frame, 0),
+            //  (Frame, 1)
+            //            ]
+            buf_mgr.cache[idx] = (Frame::default(), idx != 2)
+        }
+        let replaceable_cache_idx = buf_mgr.find_replaceable_frame();
+        assert_eq!(replaceable_cache_idx, 2);
+
+        // test: all ref bits = 1.
+
+        for idx in 0..BUFF_POOL_SIZE {
+            // [
+            //  (Frame, 1),
+            //  (Frame, 1),
+            //  (Frame, 1),
+            //  (Frame, 1),
+            //       .
+            //       .
+            //       .
+            //  (Frame, 1)
+            //            ]
+            buf_mgr.cache[idx] = (Frame::default(), true)
+        }
+        buf_mgr.cache_mra_cursor = 1;
+        let replaceable_cache_idx = buf_mgr.find_replaceable_frame();
+        assert_eq!(replaceable_cache_idx, 1);
+
         Ok(())
     }
 }
