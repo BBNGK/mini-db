@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 use crate::storage::disk::{DiskManager, PAGE_SIZE};
-use cyclic_list::List as CLOCKQueue;
 use std::collections::HashMap;
 
 // Specifies the number of pages that can be in buffer at a time
 pub const BUFF_POOL_SIZE: usize = 64;
 
 // struct size: 32+64*8+32+8 = 584 bits :thumbs_down:
+#[derive(Clone)]
 pub struct Frame {
     pub page_id: Option<u32>,
     // Holds the page data being cached.
@@ -17,12 +17,23 @@ pub struct Frame {
     pub is_dirty: bool,
 }
 
+impl std::default::Default for Frame {
+    fn default() -> Self {
+        return Self {
+            page_id: None,
+            data: [0; PAGE_SIZE],
+            pin_count: 0,
+            is_dirty: false,
+        };
+    }
+}
+
 pub struct BufferManager {
     // Holds instance of DiskManager
     disk_manager: DiskManager,
     // Holds BUFF_POOL_SIZE pages at a time in cache
-    cache: CLOCKQueue<(Frame, bool)>, // (Frame, ReferenceBit)
-    cache_mra_cursor: u8,             // "most recent access." `None` if cache is empty
+    cache: [(Frame, bool); BUFF_POOL_SIZE], // (Frame, ReferenceBit)
+    cache_mra_cursor: u16,                  // "most recent access." `None` if cache is empty
     // NOTE(ansh): probably poor cache locality. mark for review later.
     // Hashes page_id --> index in cache vector for faster reads
     page_table: HashMap<u32, usize>,
@@ -36,9 +47,11 @@ impl Drop for BufferManager {
 
 impl BufferManager {
     pub fn new(disk_manager: DiskManager) -> Self {
-        let mut cache = CLOCKQueue::new();
-        for _ in 0..BUFF_POOL_SIZE {
-            cache.push_back((
+        let mut cache: [(Frame, bool); BUFF_POOL_SIZE] =
+            core::array::from_fn(|_| (Frame::default(), false));
+        // [(Frame::default(), false); BUFF_POOL_SIZE];
+        for idx in 0..BUFF_POOL_SIZE {
+            cache[idx] = (
                 Frame {
                     page_id: None,
                     data: [0u8; PAGE_SIZE],
@@ -46,7 +59,7 @@ impl BufferManager {
                     is_dirty: false,
                 },
                 false,
-            ));
+            );
         }
 
         Self {
@@ -73,22 +86,17 @@ impl BufferManager {
     // TODO(ansh): copy list to traverse. currently mutates correct cache.
     // https://www.josehu.com/technical/2020/08/07/cache-eviction-algorithms.html
     pub fn find_replaceable_frame(&mut self) -> usize {
-        let mut current_cache_line = self.cache.cursor_mut(self.cache_mra_cursor.into());
-        let mut traversal_idx = self.cache_mra_cursor;
+        let mut reference_bits: Vec<bool> = self.cache.clone().iter().map(|cl| cl.1).collect();
+        let mut current_cursor = self.cache_mra_cursor as usize;
 
-        while current_cache_line.current().expect("cache: never empty").1 != true {
-            current_cache_line
-                .current_mut()
-                .expect("cache: never empty")
-                .1 = false;
+        while reference_bits[current_cursor] != false {
+            reference_bits[current_cursor] = true;
 
-            match current_cache_line.move_next() {
-                Ok(_) => traversal_idx += 1,
-                Err(_) => current_cache_line = self.cache.cursor_start_mut(), // going over ghost node (exists between last and head)
-            }
+            current_cursor += 1;
+            current_cursor %= BUFF_POOL_SIZE;
         }
 
-        self.cache_mra_cursor as usize + traversal_idx as usize
+        return current_cursor as usize;
     }
 
     // Handles obtaining page information from cache.
@@ -99,25 +107,17 @@ impl BufferManager {
     // Frames are replaced when they either have a pin_count of 0 or no page_id assigned, while also
     // making sure to flush dirty data back to disk before replacing.
     //
-    pub fn get_page(&mut self, page_id: u32) -> &mut [u8; PAGE_SIZE] {
+    pub fn get_page(&mut self, page_id: u32) -> [u8; PAGE_SIZE] {
         match self.page_table.get(&page_id) {
             Some(idx) => {
-                let frame = self
-                    .cache
-                    .cursor_mut(*idx)
-                    .current_mut()
-                    .expect("No frame at index!");
+                let mut frame = self.cache[*idx].clone();
                 frame.0.pin_count += 1;
 
-                &mut frame.0.data
+                frame.0.data
             }
             None => {
                 let idx = self.find_replaceable_frame();
-                let frame = self
-                    .cache
-                    .cursor_mut(idx)
-                    .current_mut()
-                    .expect("No frame at index!");
+                let mut frame = self.cache[idx].clone();
 
                 // Flushes old page
                 if frame.0.is_dirty {
@@ -140,7 +140,7 @@ impl BufferManager {
                     .read_page(page_id, &mut frame.0.data)
                     .expect("Failed to read new page to frame!");
 
-                &mut frame.0.data
+                frame.0.data
             }
         }
     }
