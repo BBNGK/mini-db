@@ -41,4 +41,4 @@ impl Token {
             literal,
         }
     }
-}   
+}
