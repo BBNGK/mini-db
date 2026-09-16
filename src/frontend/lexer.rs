@@ -1,47 +1,7 @@
-pub enum TokenType {
-    Identifier,
-    Number,
-    String,
-    Select,
-    From,
-    Where,
-    Insert,
-    Into,
-    Values,
-    Create,
-    Table,
-    Delete,
-    Update,
-    Set,
-    Int,
-    And,
-    Or,
-    Equal,
-    NotEqual,
-    LessThan,
-    GreaterThan,
-    LessThanEqual,
-    GreaterThanEqual,
-    Asterisk,
-    Comma,
-    Semicolon,
-    LeftParen,
-    RightParen,
+struct Tokenizer {
+    input: String,
+    position: usize,
 }
-
-pub struct Token {
-    pub token_type: TokenType,
-    pub literal: String,
-}
-
-impl Token {
-    pub fn new(token_type: TokenType, literal: String) -> Token {
-        Token {
-            token_type,
-            literal,
-        }
-    }
-} 
 
 impl Tokenizer {
 	// Taking the character at each 'position' and delegating it to the appropriate collector. 
@@ -49,7 +9,7 @@ impl Tokenizer {
 	fn new (input: String) -> Self {
 		Tokenizer{ input, position: 0 }
 	}
-	fn get_next_token (&mut self) -> Option<Token> {
+	fn get_next_token(&mut self) -> Option<Token> {
 		if self.position >= self.input.len() {
 			return None;
 		}
@@ -65,13 +25,13 @@ impl Tokenizer {
 	// a run of alphabetic characters gets consumed as a token identifier
 	// Note: only alphabetic chars are read
 	fn collect_identifier(&mut self) -> Option<Token> {
-		
 		let start_position = self.position;
 		while self.position < self.input.len() && self.input.chars().nth(self.position).unwrap().is_alphabetic() {
 			self.position +=1;
 		}
 		Some(Token::new(TokenType::Identifier, self.input[start_position..self.position].to_string()))
 	}
+
 	// returns all the tokens in the tokenizer
 	fn tokenize(&mut self) -> Vec<Token> {
 		let mut tokens = Vec::new();
