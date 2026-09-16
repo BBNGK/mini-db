@@ -5,7 +5,7 @@ use std::collections::HashMap;
 // Specifies the number of pages that can be in buffer at a time
 pub const BUFF_POOL_SIZE: usize = 64;
 
-// struct size: 32+64*8+32+8 = 584 bits :thumbs_down:
+// struct size: 32+4096*8+32+8 = 32,840 bits :thumbs_down:
 #[derive(Clone)]
 pub struct Frame {
     pub page_id: Option<u32>,
@@ -47,10 +47,8 @@ impl Drop for BufferManager {
 
 impl BufferManager {
     pub fn new(disk_manager: DiskManager) -> Self {
-        let mut cache: [(Frame, bool); BUFF_POOL_SIZE] =
-            core::array::from_fn(|_| (Frame::default(), false));
-        for idx in 0..BUFF_POOL_SIZE {
-            cache[idx] = (
+        let cache: [(Frame, bool); BUFF_POOL_SIZE] = core::array::from_fn(|_| {
+            (
                 Frame {
                     page_id: None,
                     data: [0u8; PAGE_SIZE],
@@ -58,8 +56,8 @@ impl BufferManager {
                     is_dirty: false,
                 },
                 false,
-            );
-        }
+            )
+        });
 
         Self {
             disk_manager,
@@ -89,7 +87,7 @@ impl BufferManager {
         let mut current_cursor = self.cache_mra_cursor as usize;
 
         while reference_bits[current_cursor] != false {
-            reference_bits[current_cursor] = true;
+            reference_bits[current_cursor] = false;
 
             current_cursor += 1;
             current_cursor %= BUFF_POOL_SIZE;

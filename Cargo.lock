@@ -3,14 +3,5 @@
 version = 4
 
 [[package]]
-name = "cyclic_list"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8c3f224bc7bbe154139701e7063509c4cb6875e053c91427e2060c47e3e1455"
-
-[[package]]
 name = "mini-db"
 version = "0.1.0"
-dependencies = [
- "cyclic_list",
-]

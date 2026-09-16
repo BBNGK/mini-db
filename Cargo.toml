@@ -2,9 +2,3 @@
 name = "mini-db"
 version = "0.1.0"
 edition = "2024"
-
-# [toolchain]
-# channel = "nightly"
-
-[dependencies]
-cyclic_list = { version = "0.1.0", default-features = false }
