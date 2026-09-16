@@ -169,3 +169,98 @@ impl BufferManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::fs::OpenOptions;
+    use std::path::PathBuf;
+    use super::*;
+    use std::time::SystemTime;
+
+
+    struct TmpFile(std::path::PathBuf);
+
+    impl TmpFile {
+        fn new(name: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "{name}_{}.db",
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("test_read_write (src/storage/disk.rs): shouldn't error")
+                    .as_secs()
+            ));
+            Self(path)
+        }
+    }
+
+    // Cleans up file from testing
+    impl Drop for TmpFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn new_buffer_pool(file_path: &PathBuf) -> BufferManager {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(file_path).expect("Couldn't open test file!");
+
+        let dm = DiskManager::new(file, 0);
+         BufferManager::new(dm)
+    }
+
+    #[test]
+    fn testing_cache_hit() {
+        let test_file = TmpFile::new("test_cache_hit");
+        let mut bm = new_buffer_pool(&test_file.0);
+
+        let page_id = bm.disk_manager.allocate_page().unwrap();
+
+        {
+            let data = bm.get_page(page_id);
+            data[0..11].copy_from_slice("HELLO THERE".as_bytes());
+        }
+
+        bm.unpin_page(page_id, true).unwrap();
+
+        {
+            let reread_data = bm.get_page(page_id);
+            assert_eq!(&reread_data[0..11], "HELLO THERE".as_bytes());
+        }
+
+        bm.unpin_page(page_id, false).unwrap();
+    }
+
+    #[test]
+    fn test_flush_writes_to_disk() {
+        let test_file = TmpFile::new("test_flush_writes_to_disk");
+
+        // Writes data to buffer, marks dirty, then drops BufferMangaer (should call .flush_all())
+        let mut bm = new_buffer_pool(&test_file.0);
+
+        let page_id = bm.disk_manager.allocate_page().unwrap();
+
+        let data = bm.get_page(page_id);
+        data[0..11].copy_from_slice("HELLO THERE".as_bytes());
+
+        bm.unpin_page(page_id, true).unwrap();
+
+        drop(bm);
+
+        // Checks disk for data
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&test_file.0)
+            .unwrap();
+
+        let mut dm = DiskManager::new(file, page_id);
+
+        let mut read_buff = [0u8; PAGE_SIZE];
+        dm.read_page(page_id, &mut read_buff).unwrap();
+        assert_eq!(&read_buff[0..11], "HELLO THERE".as_bytes());
+    }
+}
