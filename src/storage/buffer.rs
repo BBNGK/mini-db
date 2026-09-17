@@ -31,7 +31,7 @@ impl std::default::Default for Frame {
 pub struct BufferManager {
     disk_manager: DiskManager,
     cache: [(Frame, bool); BUFF_POOL_SIZE], // (Frame, ReferenceBit)
-    cache_mra_cursor: u16, // most recent access. NOTE(ansh): probably poor cache locality. mark for review later.
+    cache_mra_cursor: usize, // most recent access. NOTE(ansh): probably poor cache locality. mark for review later.
     page_table: HashMap<u32, usize>, // Hashes page_id --> index in cache vector for faster reads
 }
 
@@ -75,30 +75,23 @@ impl BufferManager {
     //
     // Also most definitely thrashes all over the place in a real setting....
     //
-    // NOTE(ansh): currently CLOCK. might need to be upgraded later.
-    // TODO(ansh): copy list to traverse. currently mutates correct cache.
+    // NOTE(ansh): currently basic CLOCK. might need to be upgraded later.
     // https://www.josehu.com/technical/2020/08/07/cache-eviction-algorithms.html
-    pub fn find_replaceable_frame(&mut self) -> usize {
-        // NOTE(ansh): store the original cache idx and the ref bit corresponding to it.
-        let mut reference_bits: Vec<(usize, bool)> = self
-            .cache
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, cl)| match cl.0.pin_count == 0 {
-                true => Some((idx, cl.1)),
-                false => None,
-            })
-            .collect();
-        let mut current_cursor = self.cache_mra_cursor as usize;
-
-        while reference_bits[current_cursor].1 {
-            reference_bits[current_cursor].1 = false;
-
-            current_cursor = reference_bits[current_cursor].0;
-            current_cursor %= BUFF_POOL_SIZE;
+    pub fn find_replaceable_frame(&mut self) -> Option<usize> {
+        // wait and prevent replacement if all frames are pinned.
+        if self.cache.iter().map(|(f, _)| f.pin_count).count() == BUFF_POOL_SIZE {
+            return None;
         }
 
-        current_cursor
+        while self.cache[self.cache_mra_cursor].1 {
+            if self.cache[self.cache_mra_cursor].0.pin_count == 0 {
+                self.cache[self.cache_mra_cursor].1 = false;
+            }
+            self.cache_mra_cursor += 1;
+            self.cache_mra_cursor %= BUFF_POOL_SIZE;
+        }
+
+        Some(self.cache_mra_cursor)
     }
 
     // Handles obtaining page information from cache.
