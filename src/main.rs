@@ -1,3 +1,5 @@
+mod frontend;
+
 mod storage;
 
 fn main() {
