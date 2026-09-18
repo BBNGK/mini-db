@@ -159,3 +159,12 @@ alpha      = "a" .. "z" | "A" .. "Z" | "_" ;
 digit      = "0" .. "9" ;
 EOS        = newline | ";" ;
 ```
+
+## Inspirations
+
+- [Acadia](https://acadia.engineering/)
+- [Verse](https://verselang.github.io/book/00_overview/)
+- [Rust](https://rust-lang.org/)
+- [Kotlin](https://kotlinlang.org/)
+- [Swift](https://www.swift.org/)
+- [Ruby](https://www.ruby-lang.org/en/)
