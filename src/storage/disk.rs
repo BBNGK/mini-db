@@ -25,6 +25,7 @@ pub struct Page {
 //
 // DiskManager handles I/O for the disk, including reading and writing pages
 //
+#[derive(Debug)]
 pub struct DiskManager {
     file: File,
     num_pages: u32,
@@ -36,7 +37,7 @@ impl DiskManager {
     }
 
     // Reads page by calculating offset (page_id * 4096)
-    pub fn read_page(&mut self, page_id: u32, buffer: &mut [u8; 4096]) -> std::io::Result<()> {
+    pub fn read_page(&mut self, page_id: u32, buffer: &mut [u8; PAGE_SIZE]) -> std::io::Result<()> {
         // Ensures no overflow from u32 * PAGE_SIZE
         let offset = (page_id as u64) * (PAGE_SIZE as u64);
 
@@ -47,7 +48,7 @@ impl DiskManager {
     }
 
     // Writes buffer data to page_id
-    pub fn write_page(&mut self, page_id: u32, buffer: &[u8; 4096]) -> std::io::Result<()> {
+    pub fn write_page(&mut self, page_id: u32, buffer: &[u8; PAGE_SIZE]) -> std::io::Result<()> {
         let offset = (page_id as u64) * (PAGE_SIZE as u64);
 
         self.file.seek(SeekFrom::Start(offset))?;
