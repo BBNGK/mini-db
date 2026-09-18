@@ -7,7 +7,7 @@ impl Lexer {
     // Taking the character at each 'position' and delegating it to the appropriate collector.
     // After all inputs are used, Return None.
     fn new(input: String) -> Self {
-        Tokenizer { input, position: 0 }
+        Lexer { input, position: 0 }
     }
     fn get_next_token(&mut self) -> Option<Token> {
         if self.position >= self.input.len() {
