@@ -290,9 +290,10 @@ impl BufferManager {
     // Flushes frames individually, to not cause deadlocks by locking internals then
     // attempting to free the entire frame pool at once.
     fn flush_frame(&self, frame_idx: usize) -> Result<(), std::io::Error> {
+        let mut inner = self.internals.lock().unwrap();
+
         let page = self.cache[frame_idx].read().unwrap();
 
-        let mut inner = self.internals.lock().unwrap();
 
         if inner.frame_metadata[frame_idx].is_dirty {
             let page_id = inner.frame_metadata[frame_idx].page_id.expect("Page is dirty w/o page_id?");
