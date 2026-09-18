@@ -1,0 +1,11 @@
+*
+
+# Rust
+!src
+!docs
+!Cargo.toml
+
+# Other
+!*.md
+!.gitignore
+
