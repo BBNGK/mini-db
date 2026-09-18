@@ -2,3 +2,6 @@
 name = "mini-db"
 version = "0.1.0"
 edition = "2024"
+
+[dependencies]
+cyclic_list = { version = "0.1.0", default-features = false }

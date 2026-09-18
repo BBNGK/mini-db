@@ -1,1 +1,13 @@
-/target
+*
+
+# Rust
+!src/
+!src/**
+!docs/
+!docs/**
+!Cargo.toml
+
+# Other
+!*.md
+!.gitignore
+
