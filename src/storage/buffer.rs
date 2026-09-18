@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::storage::disk::{DiskManager, PAGE_SIZE};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -6,23 +7,13 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 // Specifies the number of pages that can be in buffer at a time
 pub const BUFF_POOL_SIZE: usize = 64;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 struct FrameMetadata {
     page_id: Option<u32>,
     // Number of active readers / writers
     pin_count: u32,
     // Flag for whether data has been modified by access methods since it was selected from disk
-    is_dirty: bool
-}
-
-impl Default for FrameMetadata {
-    fn default() -> FrameMetadata {
-        Self {
-            page_id: None,
-            pin_count: 0,
-            is_dirty: false
-        }
-    }
+    is_dirty: bool,
 }
 
 #[derive(Debug)]
@@ -34,37 +25,35 @@ struct BufferManagerInternals {
     page_table: HashMap<u32, usize>,
     // Holds a list of the metadata a Frame needs
     // Separated from Frame so guards could access / modify the data via Arc<Mutex<>>
+    // Doubles as the cache.
     frame_metadata: [FrameMetadata; BUFF_POOL_SIZE],
+    // Fields for CLOCK.
+    cache_reference_bits: [bool; BUFF_POOL_SIZE],
+    cache_cursor: usize,
 }
 
 impl BufferManagerInternals {
-    // Helper fn for finding suitable Frame idx to be replaced.
-    //
-    // TEMPORARY eviction policy, was too lazy to look into LRU / CLOCK. This at least works for testing purposes,
-    // but just panics when at max capacity...
-    //
-    // Also most definitely thrashes all over the place in a real setting....
-    //
-    pub fn find_replacable_frame(&self) -> usize {
-        if let Some((idx, _)) = self
-            .frame_metadata
-            .iter()
-            .enumerate()
-            .find(|(_, fm)| fm.page_id == None)
-        {
-            return idx;
-        };
-
-        if let Some((idx, _)) = self
-            .frame_metadata
-            .iter()
-            .enumerate()
-            .find(|(_, fm)| fm.pin_count == 0)
-        {
-            return idx;
+    // Helper fn for finding suitable Frame idx to be replaced. Implements CLOCK.
+    // https://www.josehu.com/technical/2020/08/07/cache-eviction-algorithms.html
+    pub fn find_replaceable_frame(&mut self) -> Option<usize> {
+        // prevent replacement if all frames are pinned.
+        if self.frame_metadata.iter().all(|f| f.pin_count > 0) {
+            return None;
         }
 
-        panic!("Out of cache space! No frames available!");
+        while self.cache_reference_bits[self.cache_cursor]
+            || self.frame_metadata[self.cache_cursor].pin_count > 0
+        {
+            if self.frame_metadata[self.cache_cursor].pin_count > 0 {
+                self.cache_cursor = (self.cache_cursor + 1) % BUFF_POOL_SIZE;
+                continue;
+            }
+
+            self.cache_reference_bits[self.cache_cursor] = false;
+            self.cache_cursor = (self.cache_cursor + 1) % BUFF_POOL_SIZE;
+        }
+
+        Some(self.cache_cursor)
     }
 }
 
@@ -76,7 +65,7 @@ impl BufferManagerInternals {
 pub struct ReadPageGuard<'a> {
     inner: Arc<Mutex<BufferManagerInternals>>,
     frame_idx: usize,
-    guard: RwLockReadGuard<'a, [u8; PAGE_SIZE]>
+    guard: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
 }
 
 impl<'a> Deref for ReadPageGuard<'a> {
@@ -100,7 +89,6 @@ impl<'a> Drop for ReadPageGuard<'a> {
     }
 }
 
-
 // An abstraction over the &mut [u8; PAGE_SIZE] format.
 //
 // Gets handed to caller when get_page_mut is called, allowing for safe reads and writes to the data by simply dereferencing (mutably),
@@ -109,7 +97,7 @@ impl<'a> Drop for ReadPageGuard<'a> {
 pub struct WritePageGuard<'a> {
     inner: Arc<Mutex<BufferManagerInternals>>,
     frame_idx: usize,
-    guard: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>
+    guard: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
 }
 
 impl<'a> Deref for WritePageGuard<'a> {
@@ -139,7 +127,6 @@ impl<'a> Drop for WritePageGuard<'a> {
     }
 }
 
-
 pub struct BufferManager {
     // Holds the inner field data for BufferManager in a thread-safe + RC wrapper for guards
     internals: Arc<Mutex<BufferManagerInternals>>,
@@ -156,10 +143,12 @@ impl Drop for BufferManager {
 impl BufferManager {
     pub fn new(disk_manager: DiskManager) -> Self {
         Self {
-            internals: Arc::new(Mutex::new(BufferManagerInternals{
+            internals: Arc::new(Mutex::new(BufferManagerInternals {
                 disk_manager,
                 page_table: HashMap::new(),
-                frame_metadata: core::array::from_fn(|_| FrameMetadata::default())
+                frame_metadata: core::array::from_fn(|_| FrameMetadata::default()),
+                cache_cursor: 0,
+                cache_reference_bits: [false; BUFF_POOL_SIZE],
             })),
             cache: core::array::from_fn(|_| RwLock::new([0u8; PAGE_SIZE])),
         }
@@ -169,7 +158,6 @@ impl BufferManager {
     pub fn allocate_page(&self) -> std::io::Result<u32> {
         self.internals.lock().unwrap().disk_manager.allocate_page()
     }
-
 
     // Handles obtaining page information from cache.
     //
@@ -191,18 +179,23 @@ impl BufferManager {
                 ReadPageGuard {
                     frame_idx: idx,
                     guard: self.cache.get(idx).unwrap().read().unwrap(),
-                    inner: Arc::clone(&self.internals)
+                    inner: Arc::clone(&self.internals),
                 }
-            },
+            }
             None => {
-                let frame_idx = inner.find_replacable_frame();
+                let frame_idx = inner
+                    .find_replaceable_frame()
+                    .expect("get_page: all frames are pinned.");
 
                 let old_frame_metadata = &inner.frame_metadata[frame_idx].clone();
                 let mut frame = self.cache.get(frame_idx).unwrap().write().unwrap();
 
                 // Flushes frame onto disk
                 if old_frame_metadata.is_dirty {
-                    inner.disk_manager.write_page(old_frame_metadata.page_id.unwrap(), &frame).expect("Failed to write page");
+                    inner
+                        .disk_manager
+                        .write_page(old_frame_metadata.page_id.unwrap(), &frame)
+                        .expect("Failed to write page");
                     inner.frame_metadata[frame_idx].is_dirty = false;
                 }
 
@@ -219,7 +212,10 @@ impl BufferManager {
                 inner.frame_metadata[frame_idx].is_dirty = false;
 
                 // Writes new page data to buffer
-                inner.disk_manager.read_page(page_id, &mut *frame).expect("Failed to read page");
+                inner
+                    .disk_manager
+                    .read_page(page_id, &mut frame)
+                    .expect("Failed to read page");
 
                 drop(inner);
 
@@ -243,21 +239,26 @@ impl BufferManager {
 
                 drop(inner);
 
-                WritePageGuard{
+                WritePageGuard {
                     inner: Arc::clone(&self.internals),
                     frame_idx: idx,
                     guard: self.cache.get(idx).unwrap().write().unwrap(),
                 }
-            },
+            }
             None => {
-                let frame_idx = inner.find_replacable_frame();
+                let frame_idx = inner
+                    .find_replaceable_frame()
+                    .expect("get_page: all frames are pinned.");
 
                 let old_frame_metadata = &inner.frame_metadata[frame_idx].clone();
                 let mut frame = self.cache.get(frame_idx).unwrap().write().unwrap();
 
                 // Flushes frame onto disk
                 if old_frame_metadata.is_dirty {
-                    _ = inner.disk_manager.write_page(old_frame_metadata.page_id.unwrap(), &frame);
+                    // NOTE(ansh): ignores errors
+                    _ = inner
+                        .disk_manager
+                        .write_page(old_frame_metadata.page_id.unwrap(), &frame);
                     inner.frame_metadata[frame_idx].is_dirty = false;
                 }
 
@@ -274,7 +275,8 @@ impl BufferManager {
                 inner.frame_metadata[frame_idx].is_dirty = false;
 
                 // Writes new page data to buffer
-                _ = inner.disk_manager.read_page(page_id, &mut *frame);
+                // NOTE(ansh): ignores errors
+                _ = inner.disk_manager.read_page(page_id, &mut frame);
 
                 drop(inner);
 
@@ -294,9 +296,10 @@ impl BufferManager {
 
         let page = self.cache[frame_idx].read().unwrap();
 
-
         if inner.frame_metadata[frame_idx].is_dirty {
-            let page_id = inner.frame_metadata[frame_idx].page_id.expect("Page is dirty w/o page_id?");
+            let page_id = inner.frame_metadata[frame_idx]
+                .page_id
+                .expect("Page is dirty w/o page_id?");
             inner.disk_manager.write_page(page_id, &page)?;
             inner.frame_metadata[frame_idx].is_dirty = false;
         }
@@ -320,11 +323,10 @@ impl BufferManager {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs::OpenOptions;
     use std::path::PathBuf;
-    use super::*;
     use std::time::SystemTime;
-
 
     struct TmpFile(std::path::PathBuf);
 
@@ -354,10 +356,11 @@ mod tests {
             .write(true)
             .create(true)
             .truncate(true)
-            .open(file_path).expect("Couldn't open test file!");
+            .open(file_path)
+            .expect("Couldn't open test file!");
 
         let dm = DiskManager::new(file, 0);
-         BufferManager::new(dm)
+        BufferManager::new(dm)
     }
 
     #[test]
@@ -366,7 +369,6 @@ mod tests {
         let bm = new_buffer_pool(&test_file.0);
 
         let page_id = bm.allocate_page().unwrap();
-
 
         let mut data = bm.get_page_mut(page_id);
         data[0..11].copy_from_slice(b"HELLO THERE");
@@ -382,13 +384,12 @@ mod tests {
         let test_file = TmpFile::new("test_flush_writes_to_disk");
 
         // Writes data to buffer, marks dirty, then drops BufferMangaer (should call .flush_all())
-        let mut bm = new_buffer_pool(&test_file.0);
+        let bm = new_buffer_pool(&test_file.0);
 
         let page_id = bm.allocate_page().unwrap();
 
         let mut data = bm.get_page_mut(page_id);
         data[0..11].copy_from_slice(b"HELLO THERE");
-
 
         drop(data);
         drop(bm);
