@@ -1,8 +1,10 @@
 *
 
 # Rust
-!src
-!docs
+!src/
+!src/**
+!docs/
+!docs/**
 !Cargo.toml
 
 # Other
