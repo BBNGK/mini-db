@@ -25,6 +25,7 @@ pub struct Page {
 //
 // DiskManager handles I/O for the disk, including reading and writing pages
 //
+#[derive(Debug)]
 pub struct DiskManager {
     file: File,
     num_pages: u32,
