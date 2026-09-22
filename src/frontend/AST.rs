@@ -90,6 +90,11 @@ pub struct VariableDecl {
 //STATEMENTS!!!!!!!!!!
 
 #[derive(Debug)]
+pub struct Block {
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Debug)]
 pub enum Statement {
     Expression(Expression),
 
