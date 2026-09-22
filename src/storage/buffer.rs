@@ -12,7 +12,7 @@ struct FrameMetadata {
     // Number of active readers / writers
     pin_count: u32,
     // Flag for whether data has been modified by access methods since it was selected from disk
-    is_dirty: bool
+    is_dirty: bool,
 }
 
 impl Default for FrameMetadata {
@@ -20,7 +20,7 @@ impl Default for FrameMetadata {
         Self {
             page_id: None,
             pin_count: 0,
-            is_dirty: false
+            is_dirty: false,
         }
     }
 }
@@ -76,7 +76,7 @@ impl BufferManagerInternals {
 pub struct ReadPageGuard<'a> {
     inner: Arc<Mutex<BufferManagerInternals>>,
     frame_idx: usize,
-    guard: RwLockReadGuard<'a, [u8; PAGE_SIZE]>
+    guard: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
 }
 
 impl<'a> Deref for ReadPageGuard<'a> {
@@ -100,7 +100,6 @@ impl<'a> Drop for ReadPageGuard<'a> {
     }
 }
 
-
 // An abstraction over the &mut [u8; PAGE_SIZE] format.
 //
 // Gets handed to caller when get_page_mut is called, allowing for safe reads and writes to the data by simply dereferencing (mutably),
@@ -109,7 +108,7 @@ impl<'a> Drop for ReadPageGuard<'a> {
 pub struct WritePageGuard<'a> {
     inner: Arc<Mutex<BufferManagerInternals>>,
     frame_idx: usize,
-    guard: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>
+    guard: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
 }
 
 impl<'a> Deref for WritePageGuard<'a> {
@@ -139,7 +138,6 @@ impl<'a> Drop for WritePageGuard<'a> {
     }
 }
 
-
 pub struct BufferManager {
     // Holds the inner field data for BufferManager in a thread-safe + RC wrapper for guards
     internals: Arc<Mutex<BufferManagerInternals>>,
@@ -156,10 +154,10 @@ impl Drop for BufferManager {
 impl BufferManager {
     pub fn new(disk_manager: DiskManager) -> Self {
         Self {
-            internals: Arc::new(Mutex::new(BufferManagerInternals{
+            internals: Arc::new(Mutex::new(BufferManagerInternals {
                 disk_manager,
                 page_table: HashMap::new(),
-                frame_metadata: core::array::from_fn(|_| FrameMetadata::default())
+                frame_metadata: core::array::from_fn(|_| FrameMetadata::default()),
             })),
             cache: core::array::from_fn(|_| RwLock::new([0u8; PAGE_SIZE])),
         }
@@ -169,7 +167,6 @@ impl BufferManager {
     pub fn allocate_page(&self) -> std::io::Result<u32> {
         self.internals.lock().unwrap().disk_manager.allocate_page()
     }
-
 
     // Handles obtaining page information from cache.
     //
@@ -191,9 +188,9 @@ impl BufferManager {
                 ReadPageGuard {
                     frame_idx: idx,
                     guard: self.cache.get(idx).unwrap().read().unwrap(),
-                    inner: Arc::clone(&self.internals)
+                    inner: Arc::clone(&self.internals),
                 }
-            },
+            }
             None => {
                 let frame_idx = inner.find_replacable_frame();
 
@@ -202,7 +199,10 @@ impl BufferManager {
 
                 // Flushes frame onto disk
                 if old_frame_metadata.is_dirty {
-                    inner.disk_manager.write_page(old_frame_metadata.page_id.unwrap(), &frame).expect("Failed to write page");
+                    inner
+                        .disk_manager
+                        .write_page(old_frame_metadata.page_id.unwrap(), &frame)
+                        .expect("Failed to write page");
                     inner.frame_metadata[frame_idx].is_dirty = false;
                 }
 
@@ -219,7 +219,10 @@ impl BufferManager {
                 inner.frame_metadata[frame_idx].is_dirty = false;
 
                 // Writes new page data to buffer
-                inner.disk_manager.read_page(page_id, &mut *frame).expect("Failed to read page");
+                inner
+                    .disk_manager
+                    .read_page(page_id, &mut *frame)
+                    .expect("Failed to read page");
 
                 drop(inner);
 
@@ -243,12 +246,12 @@ impl BufferManager {
 
                 drop(inner);
 
-                WritePageGuard{
+                WritePageGuard {
                     inner: Arc::clone(&self.internals),
                     frame_idx: idx,
                     guard: self.cache.get(idx).unwrap().write().unwrap(),
                 }
-            },
+            }
             None => {
                 let frame_idx = inner.find_replacable_frame();
 
@@ -257,7 +260,9 @@ impl BufferManager {
 
                 // Flushes frame onto disk
                 if old_frame_metadata.is_dirty {
-                    _ = inner.disk_manager.write_page(old_frame_metadata.page_id.unwrap(), &frame);
+                    _ = inner
+                        .disk_manager
+                        .write_page(old_frame_metadata.page_id.unwrap(), &frame);
                     inner.frame_metadata[frame_idx].is_dirty = false;
                 }
 
@@ -294,9 +299,10 @@ impl BufferManager {
 
         let page = self.cache[frame_idx].read().unwrap();
 
-
         if inner.frame_metadata[frame_idx].is_dirty {
-            let page_id = inner.frame_metadata[frame_idx].page_id.expect("Page is dirty w/o page_id?");
+            let page_id = inner.frame_metadata[frame_idx]
+                .page_id
+                .expect("Page is dirty w/o page_id?");
             inner.disk_manager.write_page(page_id, &page)?;
             inner.frame_metadata[frame_idx].is_dirty = false;
         }
@@ -320,11 +326,10 @@ impl BufferManager {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::fs::OpenOptions;
     use std::path::PathBuf;
-    use super::*;
     use std::time::SystemTime;
-
 
     struct TmpFile(std::path::PathBuf);
 
@@ -354,10 +359,11 @@ mod tests {
             .write(true)
             .create(true)
             .truncate(true)
-            .open(file_path).expect("Couldn't open test file!");
+            .open(file_path)
+            .expect("Couldn't open test file!");
 
         let dm = DiskManager::new(file, 0);
-         BufferManager::new(dm)
+        BufferManager::new(dm)
     }
 
     #[test]
@@ -366,7 +372,6 @@ mod tests {
         let bm = new_buffer_pool(&test_file.0);
 
         let page_id = bm.allocate_page().unwrap();
-
 
         let mut data = bm.get_page_mut(page_id);
         data[0..11].copy_from_slice(b"HELLO THERE");
@@ -382,13 +387,12 @@ mod tests {
         let test_file = TmpFile::new("test_flush_writes_to_disk");
 
         // Writes data to buffer, marks dirty, then drops BufferMangaer (should call .flush_all())
-        let mut bm = new_buffer_pool(&test_file.0);
+        let bm = new_buffer_pool(&test_file.0);
 
         let page_id = bm.allocate_page().unwrap();
 
         let mut data = bm.get_page_mut(page_id);
         data[0..11].copy_from_slice(b"HELLO THERE");
-
 
         drop(data);
         drop(bm);

@@ -12,19 +12,16 @@ pub struct ModuleDecl {
     pub exposures: Vec<Exposure>,
 }
 
-
 #[derive(Debug)]
 pub struct Exposure {
     pub name: String,
     pub exposure_type: ExposureType,
 }
 
-
 #[derive(Debug)]
 pub enum ExposureType {
     Endpoint,
 }
-
 
 //Possible Declarations we have currently (?)
 
@@ -60,7 +57,7 @@ pub enum Type {
     },
 }
 
-//Imports  
+//Imports
 #[derive(Debug)]
 pub struct ImportDecl {
     pub name: String,
@@ -76,7 +73,6 @@ pub struct FunctionDecl {
     pub return_type: Option<Type>,
     pub body: Block,
 }
-
 
 #[derive(Debug)]
 pub struct Parameter {
@@ -122,19 +118,16 @@ pub enum Statement {
     },
 }
 
-
 #[derive(Debug)]
 pub enum ElseBranch {
     Block(Block),
     Statement(Box<Statement>),
 }
 
-
 //Expressions/Function calls/operators/primary values
 
 #[derive(Debug)]
 pub enum Expression {
-
     //Operators
     Binary {
         left: Box<Expression>,
@@ -147,7 +140,6 @@ pub enum Expression {
         expression: Box<Expression>,
     },
 
-
     //Function calls
     Call {
         function: Box<Expression>,
@@ -156,13 +148,11 @@ pub enum Expression {
         block: Option<Block>,
     },
 
-
     //Access
     MemberAccess {
         object: Box<Expression>,
         field: String,
     },
-
 
     //Primary values
     Identifier(String),
@@ -180,13 +170,11 @@ pub enum Expression {
     Object(Vec<Expression>),
 }
 
-
 #[derive(Debug)]
 pub struct Argument {
     pub name: Option<String>,
     pub value: Expression,
 }
-
 
 //Operators
 
@@ -206,7 +194,6 @@ pub enum BinaryOperator {
     Divide,
     Modulo,
 }
-
 
 #[derive(Debug)]
 pub enum UnaryOperator {

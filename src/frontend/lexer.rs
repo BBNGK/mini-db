@@ -1,3 +1,5 @@
+use crate::frontend::token::{Token, TokenType};
+
 struct Lexer {
     input: String,
     position: usize,
