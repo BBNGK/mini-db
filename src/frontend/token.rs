@@ -1,4 +1,8 @@
+
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenType {
+    Unknown,
     Identifier,
     Number,
     String,
@@ -34,6 +38,7 @@ pub struct Token {
     pub literal: String,
 }
 
+
 impl Token {
     pub fn new(token_type: TokenType, literal: String) -> Token {
         Token {
@@ -41,4 +46,5 @@ impl Token {
             literal,
         }
     }
-}   
+}
+
